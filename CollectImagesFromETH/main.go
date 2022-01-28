@@ -10,13 +10,17 @@ import (
 	"runtime"
 
 	"fmt"
-
+	"io"
+	"io/ioutil"
 	"log"
 	"os"
-
 	//"math"
 	//"encoding/hex"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
 
+	"bytes"
 	//"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -33,17 +37,18 @@ import (
 
 	//erc1155 "ETHCollectTrans/contracts/output/ERC1155"
 
-	//. "CollectImagesFromETH/types"
+	. "CollectImagesFromETH/types"
 
 	logger "CollectImagesFromETH/logger"
 
 	"CollectImagesFromETH/config"
-	//"net/http"
+	"net/http"
+	"strings"
 )
 
 var client *ethclient.Client = nil
 
-var IMAGE_PATH string = "../CollectNFT/Images/"
+var IMAGE_PATH string = "./Images/"
 
 func main() {
 
@@ -80,8 +85,13 @@ func main() {
 
 	for _, row := range rows {
 
+		trx := row[1]
 		contractAddress := row[2]
+		contractName := row[3]
+		contractSymbol := row[4]
 		tokenID := row[5]
+
+		logger.InfoLog("-------------------------------------------------------contractAddressHex[%s] TokenID[%s]  ", contractAddress, tokenID)
 
 		cAddress := common.HexToAddress(contractAddress)
 		instance, err := erc721.NewErc721(cAddress, client)
@@ -98,7 +108,7 @@ func main() {
 
 		tokenIDBig := big.NewInt(int64(tokenIDInt))
 
-		TokenURI, err := instance.TokenURI(&bind.CallOpts{}, tokenIDBig)
+		tokenURI, err := instance.TokenURI(&bind.CallOpts{}, tokenIDBig)
 		if err != nil {
 			logger.InfoLog("Error Token URI : contractAddressHex[%s] TokenID[%s] , error[%s] ", contractAddress, tokenID, err.Error())
 			continue
@@ -106,9 +116,81 @@ func main() {
 
 		fmt.Printf("%s ", row[2])
 		fmt.Printf("%s ", row[5])
-		fmt.Printf("%s ", TokenURI)
+		fmt.Printf("%s ", tokenURI)
 		fmt.Println()
+
+		pathandfilename := fmt.Sprintf("%s%s_%s", IMAGE_PATH, contractSymbol, tokenID)
+
+		tokenImagesFileName := GetTokenURIData(tokenURI, pathandfilename)
+		if err != nil {
+			logger.InfoLog("Error getTokenMetaData : contractAddressHex[%s] TokenID[%s] , error[%s] ", contractAddress, tokenID, err.Error())
+			continue
+		}
+
+		var b bytes.Buffer
+
+		b.WriteString(trx)
+		b.WriteString(",")
+		b.WriteString(contractAddress)
+		b.WriteString(",")
+		b.WriteString(contractName)
+		b.WriteString(",")
+		b.WriteString(contractSymbol)
+		b.WriteString(",")
+		b.WriteString(tokenID)
+		b.WriteString(",")
+		b.WriteString(tokenImagesFileName)
+
+		logger.ImageLog(b.String())
+
 	}
+
+}
+
+func getTokenMetaData(tokenuri string) (TokenMetaData, error) {
+
+	metadata := TokenMetaData{}
+
+	//ipfs:// 로 시작하면 변경해줘야 한다
+	// https://ipfs.io/ipfs/QmSTtv3w1jqcv5AKRRYVR5NN7fkTuuL9sNrkxRNL9e3fUo/4744 이런식으로
+
+	// tokenuri
+	//ipfs://QmWS694ViHvkTms9UkKqocv1kWDm2MTQqYEJeYi6LsJbxK 이런 경우가있고
+	//ipfs://ipfs/QmWS694ViHvkTms9UkKqocv1kWDm2MTQqYEJeYi6LsJbxK 이런 경우도 있다 이놈때문에이렇게 바꿔존다
+	// https://ipfs.io/ipfs/QmWS694ViHvkTms9UkKqocv1kWDm2MTQqYEJeYi6LsJbxK 이렇게 바꾼다
+
+	logger.InfoLog("-------tokenuri before : %s", tokenuri)
+
+	r := strings.NewReplacer("ipfs://ipfs/", "https://ipfs.io/ipfs/", "ipfs://", "https://ipfs.io/ipfs/")
+
+	tokenuri = r.Replace(tokenuri)
+
+	logger.InfoLog("-------tokenuri after  %s", tokenuri)
+
+	res, err := http.Get(tokenuri)
+	if err != nil {
+		logger.InfoLog("-------getTokenMetaData http.Get(tokenuri) tokenuri[%s] error[%s] ", tokenuri, err.Error())
+		return metadata, err
+
+	}
+
+	defer res.Body.Close()
+
+	data, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		logger.InfoLog("-------getTokenMetaData ioutil.ReadAll tokenuri[%s] error[%s] ", tokenuri, err.Error())
+		return metadata, err
+
+	}
+
+	err = json.Unmarshal(data, &metadata)
+	if err != nil {
+		logger.InfoLog("-------getTokenMetaData  json.Unmarshal(data, &metadata)  data[%s] error[%s] ", string(data), err.Error())
+		return metadata, err
+
+	}
+
+	return metadata, nil
 
 }
 
@@ -151,83 +233,36 @@ func main() {
 
 // }
 
-// func getTokenMetaData(tokenuri string) (TokenMetaData, error) {
+func downloadFile(URL, fileName string) error {
+	//Get the response bytes from the url
 
-// 	metadata := TokenMetaData{}
+	logger.InfoLog("start download image uri : %s , fileName : %s \n", URL, fileName)
 
-// 	//ipfs:// 로 시작하면 변경해줘야 한다
-// 	// https://ipfs.io/ipfs/QmSTtv3w1jqcv5AKRRYVR5NN7fkTuuL9sNrkxRNL9e3fUo/4744 이런식으로
+	response, err := http.Get(URL)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
 
-// 	// tokenuri
-// 	//ipfs://QmWS694ViHvkTms9UkKqocv1kWDm2MTQqYEJeYi6LsJbxK 이런 경우가있고
-// 	//ipfs://ipfs/QmWS694ViHvkTms9UkKqocv1kWDm2MTQqYEJeYi6LsJbxK 이런 경우도 있다 이놈때문에이렇게 바꿔존다
-// 	// https://ipfs.io/ipfs/QmWS694ViHvkTms9UkKqocv1kWDm2MTQqYEJeYi6LsJbxK 이렇게 바꾼다
+	if response.StatusCode != 200 {
+		logger.InfoLog("-------downloadFile status code is not 200  URL[%s] fileName[%s] , code[%d]", URL, fileName, response.StatusCode)
+		return errors.New("Received non 200 response code")
+	}
+	//Create a empty file
+	file, err := os.Create(fileName)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
 
-// 	logger.InfoLog("-------tokenuri before : %s", tokenuri)
+	//Write the bytes to the fiel
+	_, err = io.Copy(file, response.Body)
+	if err != nil {
+		return err
+	}
 
-// 	r := strings.NewReplacer("ipfs://ipfs/", "https://ipfs.io/ipfs/", "ipfs://", "https://ipfs.io/ipfs/")
-
-// 	tokenuri = r.Replace(tokenuri)
-
-// 	logger.InfoLog("-------tokenuri after  %s", tokenuri)
-
-// 	res, err := http.Get(tokenuri)
-// 	if err != nil {
-// 		logger.InfoLog("-------getTokenMetaData http.Get(tokenuri) tokenuri[%s] error[%s] ", tokenuri, err.Error())
-// 		return metadata, err
-
-// 	}
-
-// 	defer res.Body.Close()
-
-// 	data, err := ioutil.ReadAll(res.Body)
-// 	if err != nil {
-// 		logger.InfoLog("-------getTokenMetaData ioutil.ReadAll tokenuri[%s] error[%s] ", tokenuri, err.Error())
-// 		return metadata, err
-
-// 	}
-
-// 	err = json.Unmarshal(data, &metadata)
-// 	if err != nil {
-// 		logger.InfoLog("-------getTokenMetaData  json.Unmarshal(data, &metadata)  data[%s] error[%s] ", string(data), err.Error())
-// 		return metadata, err
-
-// 	}
-
-// 	return metadata, nil
-
-// }
-
-// func downloadFile(URL, fileName string) error {
-// 	//Get the response bytes from the url
-
-// 	logger.InfoLog("start download image uri : %s , fileName : %s \n", URL, fileName)
-
-// 	response, err := http.Get(URL)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer response.Body.Close()
-
-// 	if response.StatusCode != 200 {
-// 		logger.InfoLog("-------downloadFile status code is not 200  URL[%s] fileName[%s] , code[%d]", URL, fileName, response.StatusCode)
-// 		return errors.New("Received non 200 response code")
-// 	}
-// 	//Create a empty file
-// 	file, err := os.Create(fileName)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer file.Close()
-
-// 	//Write the bytes to the fiel
-// 	_, err = io.Copy(file, response.Body)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	return nil
-// }
+	return nil
+}
 
 // func GetERC721Data(eventlog types.Log) (ContractAddr common.Address, Name string, Symbol string, TokenID string, err error) {
 
@@ -320,163 +355,161 @@ func main() {
 
 // }
 
-// func GetImageFromDataApplicationJson(tokenuri, pathandfilename string) string {
+func GetImageFromDataApplicationJson(tokenuri, pathandfilename string) string {
 
-// 	logger.InfoLog("------- tokenuri uri [%s]\n", "data:application/json........")
+	logger.InfoLog("------- tokenuri uri [%s]\n", "data:application/json........")
 
-// 	//logger.InfoLog("token uri data:json : imageuri uri %s\n", tokenuri)
+	//logger.InfoLog("token uri data:json : imageuri uri %s\n", tokenuri)
 
-// 	tokenuriarr := strings.Split(tokenuri, ",")
+	tokenuriarr := strings.Split(tokenuri, ",")
 
-// 	tokenMetaData := TokenMetaDataBase64{}
+	tokenMetaData := TokenMetaDataBase64{}
 
-// 	if strings.Trim(tokenuriarr[0], " ") == "data:application/json;utf8" {
+	if strings.Trim(tokenuriarr[0], " ") == "data:application/json;utf8" {
 
-// 		//logger.InfoLog("token uri data:json : strings.Replace(tokenuri, data:application/json;utf8 uri %s\n", strings.Replace(tokenuri, "data:application/json;utf8,", "", 1))
+		//logger.InfoLog("token uri data:json : strings.Replace(tokenuri, data:application/json;utf8 uri %s\n", strings.Replace(tokenuri, "data:application/json;utf8,", "", 1))
 
-// 		data := strings.Replace(tokenuri, "data:application/json;utf8,", "", 1)
+		data := strings.Replace(tokenuri, "data:application/json;utf8,", "", 1)
 
-// 		//logger.InfoLog("------- tokenuri uri [%s]\n", tokenuriarr[0])
-// 		err := json.Unmarshal([]byte(data), &tokenMetaData)
-// 		if err != nil {
-// 			logger.InfoLog(" tokenMetaData utf8 Unmarshal Error : ", err)
-// 			logger.InfoLog("token string [%s]\n", tokenuriarr[1])
-// 			return ""
-// 		}
+		//logger.InfoLog("------- tokenuri uri [%s]\n", tokenuriarr[0])
+		err := json.Unmarshal([]byte(data), &tokenMetaData)
+		if err != nil {
+			logger.InfoLog(" tokenMetaData utf8 Unmarshal Error : ", err)
+			logger.InfoLog("token string [%s]\n", tokenuriarr[1])
+			return ""
+		}
 
-// 	} else if strings.Trim(tokenuriarr[0], " ") == "data:application/json;base64" {
+	} else if strings.Trim(tokenuriarr[0], " ") == "data:application/json;base64" {
 
-// 		logger.InfoLog("------- tokenuri uri [%s]\n", tokenuriarr[0])
+		logger.InfoLog("------- tokenuri uri [%s]\n", tokenuriarr[0])
 
-// 		data, err := base64.StdEncoding.DecodeString(tokenuriarr[1])
-// 		if err != nil {
-// 			logger.InfoLog(" tokenMetaData base64.StdEncoding.DecodeString Error : ", err)
-// 			return ""
-// 		}
+		data, err := base64.StdEncoding.DecodeString(tokenuriarr[1])
+		if err != nil {
+			logger.InfoLog(" tokenMetaData base64.StdEncoding.DecodeString Error : ", err)
+			return ""
+		}
 
-// 		//fmt.Printf("test data : %s\n", string(data))
+		//fmt.Printf("test data : %s\n", string(data))
 
-// 		err = json.Unmarshal(data, &tokenMetaData)
-// 		if err != nil {
-// 			logger.InfoLog(" tokenMetaData base64 Unmarshal Error : ", err)
-// 			logger.InfoLog("token DecodeString [%s]\n", string(data))
-// 			return ""
-// 		}
+		err = json.Unmarshal(data, &tokenMetaData)
+		if err != nil {
+			logger.InfoLog(" tokenMetaData base64 Unmarshal Error : ", err)
+			logger.InfoLog("token DecodeString [%s]\n", string(data))
+			return ""
+		}
 
-// 	} else {
+	} else {
 
-// 		logger.InfoLog("------- tokenuri uri not  data:application/json;utf8 and  data:application/json;base64 [%s]\n", tokenuriarr[0])
-// 		return ""
-// 	}
+		logger.InfoLog("------- tokenuri uri not  data:application/json;utf8 and  data:application/json;base64 [%s]\n", tokenuriarr[0])
+		return ""
+	}
 
-// 	//logger.InfoLog("token uri data:json : imageuri tokenuriarr[1]  ---- uri [%s]\n", tokenuriarr[1])
+	//logger.InfoLog("token uri data:json : imageuri tokenuriarr[1]  ---- uri [%s]\n", tokenuriarr[1])
 
-// 	imagearr := strings.Split(tokenMetaData.Image, ",")
+	imagearr := strings.Split(tokenMetaData.Image, ",")
 
-// 	file, err := os.Create(pathandfilename)
-// 	if err != nil {
-// 		logger.InfoLog("getImageFromDataApplicationJson os.Create Error : ", err)
-// 		return ""
-// 	}
+	file, err := os.Create(pathandfilename)
+	if err != nil {
+		logger.InfoLog("getImageFromDataApplicationJson os.Create Error : ", err)
+		return ""
+	}
 
-// 	defer file.Close()
+	defer file.Close()
 
-// 	//logger.InfoLog("tokenMetaData.Image[%s]\n", tokenMetaData.Image)
+	//logger.InfoLog("tokenMetaData.Image[%s]\n", tokenMetaData.Image)
 
-// 	if strings.Trim(imagearr[0], " ") == "data:image/svg+xml;utf8" {
+	if strings.Trim(imagearr[0], " ") == "data:image/svg+xml;utf8" {
 
-// 		//logger.InfoLog("data:image/svg+xml;utf8 imagearr[1][%s]\n", imagearr[2])
+		//logger.InfoLog("data:image/svg+xml;utf8 imagearr[1][%s]\n", imagearr[2])
 
-// 		imageUTF8 := strings.Replace(tokenMetaData.Image, "data:image/svg+xml;utf8,", "", 1)
+		imageUTF8 := strings.Replace(tokenMetaData.Image, "data:image/svg+xml;utf8,", "", 1)
 
-// 		cnt, err := file.WriteString(imageUTF8)
-// 		if err != nil {
-// 			logger.InfoLog("getImageFromDataApplicationJson data:image/svg+xml;utf8 file.WriteString Error : ", err)
-// 			return ""
-// 		}
+		cnt, err := file.WriteString(imageUTF8)
+		if err != nil {
+			logger.InfoLog("getImageFromDataApplicationJson data:image/svg+xml;utf8 file.WriteString Error : ", err)
+			return ""
+		}
 
-// 		logger.InfoLog("file.WriteString data:image/svg+xml;utf8 cnt %d ", cnt)
+		logger.InfoLog("file.WriteString data:image/svg+xml;utf8 cnt %d ", cnt)
 
-// 		return "OK"
+		return "OK"
 
-// 	} else if strings.Trim(imagearr[0], " ") == "data:image/svg+xml;base64" { // svg , base64 로 인코딩 되어있는 경우 svg 를 파일로
-// 		imgdata, err := base64.StdEncoding.DecodeString(imagearr[1])
-// 		if err != nil {
-// 			logger.InfoLog("base64.StdEncoding.DecodeString(imagearr Error : ", err)
-// 			return ""
-// 		}
+	} else if strings.Trim(imagearr[0], " ") == "data:image/svg+xml;base64" { // svg , base64 로 인코딩 되어있는 경우 svg 를 파일로
+		imgdata, err := base64.StdEncoding.DecodeString(imagearr[1])
+		if err != nil {
+			logger.InfoLog("base64.StdEncoding.DecodeString(imagearr Error : ", err)
+			return ""
+		}
 
-// 		//logger.InfoLog("base64.StdEncoding.DecodeString  %s\n", imgdata)
+		//logger.InfoLog("base64.StdEncoding.DecodeString  %s\n", imgdata)
 
-// 		cnt, err := file.WriteString(string(imgdata))
-// 		if err != nil {
-// 			logger.InfoLog("getImageFromDataApplicationJson data:image/svg+xml;base64 file.WriteString Error : ", err)
-// 			return ""
-// 		}
+		cnt, err := file.WriteString(string(imgdata))
+		if err != nil {
+			logger.InfoLog("getImageFromDataApplicationJson data:image/svg+xml;base64 file.WriteString Error : ", err)
+			return ""
+		}
 
-// 		logger.InfoLog("file.WriteString data:image/svg+xml;base64 cnt %d ", cnt)
+		logger.InfoLog("file.WriteString data:image/svg+xml;base64 cnt %d ", cnt)
 
-// 		return "OK"
-// 	}
+		return "OK"
+	}
 
-// 	return ""
-// }
+	return ""
+}
 
-// func GetTokenURIData(tokenuri, tokenid, contractName string) string {
+func GetTokenURIData(tokenuri, pathandfilename string) string {
 
-// 	replacer := strings.NewReplacer(" ", "_", ":", "", "?", "", "*", "", "<", "", ">", "", "|", "", "\"", "", "/", "")
-// 	contractNameFilter := replacer.Replace(contractName)
+	//replacer := strings.NewReplacer(" ", "_", ":", "", "?", "", "*", "", "<", "", ">", "", "|", "", "\"", "", "/", "")
+	//contractNameFilter := replacer.Replace(contractName)
 
-// 	rtn := ""
-// 	if strings.Contains(tokenuri, "data:application/json") == true {
+	rtn := ""
+	if strings.Contains(tokenuri, "data:application/json") == true {
 
-// 		filename := fmt.Sprintf("%s_%s.svg", contractNameFilter, tokenid)
-// 		pathandfilename := fmt.Sprintf("%s%s", IMAGE_PATH, filename)
-// 		result := GetImageFromDataApplicationJson(tokenuri, pathandfilename)
+		pathandfilename := fmt.Sprintf("%s.svg", pathandfilename)
+		result := GetImageFromDataApplicationJson(tokenuri, pathandfilename)
 
-// 		rtn = filename
+		rtn = pathandfilename
 
-// 		if result == "OK" {
+		if result == "OK" {
 
-// 		} else {
-// 			logger.InfoLog("GetImageFromDataApplicationJson Result Not OK Tokenuri[%s] , FileName[%s] \n ", tokenuri, filename)
-// 		}
+		} else {
+			logger.InfoLog("GetImageFromDataApplicationJson Result Not OK Tokenuri[%s] , FileName[%s] \n ", tokenuri, pathandfilename)
+		}
 
-// 	} else {
+	} else {
 
-// 		logger.InfoLog("------- tokenuri uri [%s]\n", tokenuri)
+		logger.InfoLog("------- tokenuri uri [%s]\n", tokenuri)
 
-// 		tokenMetaData, err := getTokenMetaData(tokenuri)
-// 		if err != nil {
-// 			logger.InfoLog("--------------------------getTokenImageUri , Tokenuri[%s] Error[%s]\n ", tokenuri, err.Error())
-// 		} else {
+		tokenMetaData, err := getTokenMetaData(tokenuri)
+		if err != nil {
+			logger.InfoLog("--------------------------getTokenImageUri , Tokenuri[%s] Error[%s]\n ", tokenuri, err.Error())
+		} else {
 
-// 			imageuri := tokenMetaData.Image
+			imageuri := tokenMetaData.Image
 
-// 			filename := fmt.Sprintf("%s_%s.png", contractNameFilter, tokenid)
-// 			pathandfilename := fmt.Sprintf("%s%s", IMAGE_PATH, filename)
+			pathandfilename := fmt.Sprintf("%s.png", pathandfilename)
 
-// 			rtn = filename
+			rtn = pathandfilename
 
-// 			if strings.Contains(imageuri, "ipfs://") == true {
-// 				imageuri = strings.ReplaceAll(imageuri, "ipfs://", "https://ipfs.io/ipfs/")
-// 			}
+			if strings.Contains(imageuri, "ipfs://") == true {
+				imageuri = strings.ReplaceAll(imageuri, "ipfs://", "https://ipfs.io/ipfs/")
+			}
 
-// 			if strings.Contains(imageuri, "ipfs") == true { /// 20220116 ipfs 에서 image 다운로드가 너무 오래걸린다  받아 지지도 않음 download pas
+			if strings.Contains(imageuri, "ipfs") == true { /// 20220116 ipfs 에서 image 다운로드가 너무 오래걸린다  받아 지지도 않음 download pas
 
-// 				logger.InfoLog("------ipfs image url!! Tokenuri[%s] FileName[%s] ,  ImageURL[%s]\n ", tokenuri, filename, imageuri)
-// 			} else {
+				logger.InfoLog("------ipfs image url!! Tokenuri[%s] FileName[%s] ,  ImageURL[%s]\n ", tokenuri, pathandfilename, imageuri)
+			} else {
 
-// 				err = downloadFile(imageuri, pathandfilename)
-// 				if err != nil {
-// 					logger.InfoLog("--------------------------downloadfile error Transaction[%s] , Image[%s] , FileName[%s] , Error[%s]\n ", imageuri, filename, err.Error())
+				err = downloadFile(imageuri, pathandfilename)
+				if err != nil {
+					logger.InfoLog("--------------------------downloadfile error Transaction[%s] , Image[%s] , FileName[%s] , Error[%s]\n ", imageuri, pathandfilename, err.Error())
 
-// 				}
-// 			}
-// 		}
+				}
+			}
+		}
 
-// 	}
+	}
 
-// 	return rtn
+	return rtn
 
-// }
+}
