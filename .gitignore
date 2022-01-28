@@ -1,4 +1,4 @@
-Graph/NFTImages/
-TokenData/
-CollectTransactionInfo/*.sum
-config.json
+CollectImagesFromETH/config.json
+CollectImagesFromETH/Images/
+CollectImagesFromKlaytn/config.json
+CollectImagesFromKlaytn/Images/
