@@ -14,6 +14,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+
 	//"math"
 	//"encoding/hex"
 	"encoding/base64"
@@ -71,7 +72,7 @@ func main() {
 
 	client = ethdial
 
-	file, err := os.Open("./data/rankdata.log")
+	file, err := os.Open("./data/NFTNAMEFILEDOWN_20220205_2.csv")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -85,11 +86,11 @@ func main() {
 
 	for _, row := range rows {
 
-		trx := row[1]
-		contractAddress := row[2]
-		contractName := row[3]
-		contractSymbol := row[4]
-		tokenID := row[5]
+		//trx := row[1]
+		contractAddress := row[0]
+		//contractName := row[1]
+		contractSymbol := row[1]
+		tokenID := row[2]
 
 		logger.InfoLog("-------------------------------------------------------contractAddressHex[%s] TokenID[%s]  ", contractAddress, tokenID)
 
@@ -114,14 +115,12 @@ func main() {
 			continue
 		}
 
-		fmt.Printf("%s ", row[2])
-		fmt.Printf("%s ", row[5])
 		fmt.Printf("%s ", tokenURI)
 		fmt.Println()
 
 		pathandfilename := fmt.Sprintf("%s%s_%s", IMAGE_PATH, contractSymbol, tokenID)
 
-		tokenImagesFileName := GetTokenURIData(tokenURI, pathandfilename)
+		tokenImagesFileName, subject := GetTokenURIData(tokenURI, pathandfilename)
 		if err != nil {
 			logger.InfoLog("Error getTokenMetaData : contractAddressHex[%s] TokenID[%s] , error[%s] ", contractAddress, tokenID, err.Error())
 			continue
@@ -129,15 +128,13 @@ func main() {
 
 		var b bytes.Buffer
 
-		b.WriteString(trx)
-		b.WriteString(",")
 		b.WriteString(contractAddress)
-		b.WriteString(",")
-		b.WriteString(contractName)
 		b.WriteString(",")
 		b.WriteString(contractSymbol)
 		b.WriteString(",")
 		b.WriteString(tokenID)
+		b.WriteString(",")
+		b.WriteString(subject)
 		b.WriteString(",")
 		b.WriteString(tokenImagesFileName)
 
@@ -355,7 +352,49 @@ func downloadFile(URL, fileName string) error {
 
 // }
 
-func GetImageFromDataApplicationJson(tokenuri, pathandfilename string) string {
+func GetImageFromDataTextPlain(tokenuri, pathandfilename string) (rtn string, subject string) {
+
+	rtn = ""
+	subject = ""
+
+	tokenuriarr := strings.Split(tokenuri, ",")
+
+	tokenMetaData := TokenMetaDataBase64{}
+
+	if strings.Trim(tokenuriarr[0], " ") == "data:text/plain;charset=utf-8" {
+
+		// data := strings.Replace(tokenuri, "data:text/plain;charset=utf-8,", "", 1)
+
+		// r, size := utf8.DecodeRune([]rune(data))
+		// fmt.Printf("%c %v\n", r, size)
+
+		// //logger.InfoLog("------- tokenuri uri [%s]\n", tokenuriarr[0])
+		// err := json.Unmarshal([]byte(data), &tokenMetaData)
+		// if err != nil {
+		// 	logger.InfoLog("GetImageFromDataTextPlain tokenMetaData utf8 Unmarshal Error : ", err)
+		// 	logger.InfoLog("token string [%s]\n", tokenuriarr[1])
+		// 	return
+		// }
+
+	}
+
+	//imagearr := strings.Split(tokenMetaData.Image, ",")
+
+	subject = tokenMetaData.Name
+
+	// file, err := os.Create(pathandfilename)
+	// if err != nil {
+	// 	logger.InfoLog("getImageFromDataApplicationJson os.Create Error : ", err)
+	// 	return
+	// }
+
+	// defer file.Close()
+
+	return
+
+}
+
+func GetImageFromDataApplicationJson(tokenuri, pathandfilename string) (rtn string, subject string) {
 
 	logger.InfoLog("------- tokenuri uri [%s]\n", "data:application/json........")
 
@@ -364,6 +403,9 @@ func GetImageFromDataApplicationJson(tokenuri, pathandfilename string) string {
 	tokenuriarr := strings.Split(tokenuri, ",")
 
 	tokenMetaData := TokenMetaDataBase64{}
+
+	rtn = ""
+	subject = ""
 
 	if strings.Trim(tokenuriarr[0], " ") == "data:application/json;utf8" {
 
@@ -376,7 +418,7 @@ func GetImageFromDataApplicationJson(tokenuri, pathandfilename string) string {
 		if err != nil {
 			logger.InfoLog(" tokenMetaData utf8 Unmarshal Error : ", err)
 			logger.InfoLog("token string [%s]\n", tokenuriarr[1])
-			return ""
+			return
 		}
 
 	} else if strings.Trim(tokenuriarr[0], " ") == "data:application/json;base64" {
@@ -386,7 +428,7 @@ func GetImageFromDataApplicationJson(tokenuri, pathandfilename string) string {
 		data, err := base64.StdEncoding.DecodeString(tokenuriarr[1])
 		if err != nil {
 			logger.InfoLog(" tokenMetaData base64.StdEncoding.DecodeString Error : ", err)
-			return ""
+			return
 		}
 
 		//fmt.Printf("test data : %s\n", string(data))
@@ -395,23 +437,25 @@ func GetImageFromDataApplicationJson(tokenuri, pathandfilename string) string {
 		if err != nil {
 			logger.InfoLog(" tokenMetaData base64 Unmarshal Error : ", err)
 			logger.InfoLog("token DecodeString [%s]\n", string(data))
-			return ""
+			return
 		}
 
 	} else {
 
 		logger.InfoLog("------- tokenuri uri not  data:application/json;utf8 and  data:application/json;base64 [%s]\n", tokenuriarr[0])
-		return ""
+		return
 	}
 
 	//logger.InfoLog("token uri data:json : imageuri tokenuriarr[1]  ---- uri [%s]\n", tokenuriarr[1])
 
 	imagearr := strings.Split(tokenMetaData.Image, ",")
 
+	subject = tokenMetaData.Name
+
 	file, err := os.Create(pathandfilename)
 	if err != nil {
 		logger.InfoLog("getImageFromDataApplicationJson os.Create Error : ", err)
-		return ""
+		return
 	}
 
 	defer file.Close()
@@ -427,18 +471,19 @@ func GetImageFromDataApplicationJson(tokenuri, pathandfilename string) string {
 		cnt, err := file.WriteString(imageUTF8)
 		if err != nil {
 			logger.InfoLog("getImageFromDataApplicationJson data:image/svg+xml;utf8 file.WriteString Error : ", err)
-			return ""
+			return
 		}
 
 		logger.InfoLog("file.WriteString data:image/svg+xml;utf8 cnt %d ", cnt)
 
-		return "OK"
+		rtn = "OK"
+		return
 
 	} else if strings.Trim(imagearr[0], " ") == "data:image/svg+xml;base64" { // svg , base64 로 인코딩 되어있는 경우 svg 를 파일로
 		imgdata, err := base64.StdEncoding.DecodeString(imagearr[1])
 		if err != nil {
 			logger.InfoLog("base64.StdEncoding.DecodeString(imagearr Error : ", err)
-			return ""
+			return
 		}
 
 		//logger.InfoLog("base64.StdEncoding.DecodeString  %s\n", imgdata)
@@ -446,34 +491,51 @@ func GetImageFromDataApplicationJson(tokenuri, pathandfilename string) string {
 		cnt, err := file.WriteString(string(imgdata))
 		if err != nil {
 			logger.InfoLog("getImageFromDataApplicationJson data:image/svg+xml;base64 file.WriteString Error : ", err)
-			return ""
+			return
 		}
 
 		logger.InfoLog("file.WriteString data:image/svg+xml;base64 cnt %d ", cnt)
-
-		return "OK"
+		rtn = "OK"
+		return
 	}
 
-	return ""
+	return
 }
 
-func GetTokenURIData(tokenuri, pathandfilename string) string {
+func GetTokenURIData(tokenuri, pathandfilename string) (rtn string, subject string) {
 
 	//replacer := strings.NewReplacer(" ", "_", ":", "", "?", "", "*", "", "<", "", ">", "", "|", "", "\"", "", "/", "")
 	//contractNameFilter := replacer.Replace(contractName)
 
-	rtn := ""
+	rtn = ""
+	subject = ""
 	if strings.Contains(tokenuri, "data:application/json") == true {
 
 		pathandfilename := fmt.Sprintf("%s.svg", pathandfilename)
-		result := GetImageFromDataApplicationJson(tokenuri, pathandfilename)
+		result, name := GetImageFromDataApplicationJson(tokenuri, pathandfilename)
 
 		rtn = pathandfilename
-
+		subject = name
 		if result == "OK" {
+			rtn = "OK"
+			subject = name
 
 		} else {
 			logger.InfoLog("GetImageFromDataApplicationJson Result Not OK Tokenuri[%s] , FileName[%s] \n ", tokenuri, pathandfilename)
+		}
+
+	} else if strings.Contains(tokenuri, "data:text/plain;charset=utf-8") == true {
+
+		result, name := GetImageFromDataTextPlain(tokenuri, pathandfilename)
+
+		rtn = pathandfilename
+		subject = name
+		if result == "OK" {
+			rtn = "OK"
+			subject = name
+
+		} else {
+			logger.InfoLog("GetImageFromDataTextPlain Result Not OK Tokenuri[%s] , FileName[%s] \n ", tokenuri, pathandfilename)
 		}
 
 	} else {
@@ -486,6 +548,8 @@ func GetTokenURIData(tokenuri, pathandfilename string) string {
 		} else {
 
 			imageuri := tokenMetaData.Image
+
+			subject = fmt.Sprintf("%v", tokenMetaData.Name)
 
 			pathandfilename := fmt.Sprintf("%s.png", pathandfilename)
 
@@ -500,16 +564,18 @@ func GetTokenURIData(tokenuri, pathandfilename string) string {
 				logger.InfoLog("------ipfs image url!! Tokenuri[%s] FileName[%s] ,  ImageURL[%s]\n ", tokenuri, pathandfilename, imageuri)
 			} else {
 
-				err = downloadFile(imageuri, pathandfilename)
-				if err != nil {
-					logger.InfoLog("--------------------------downloadfile error Transaction[%s] , Image[%s] , FileName[%s] , Error[%s]\n ", imageuri, pathandfilename, err.Error())
+				/*
+					err = downloadFile(imageuri, pathandfilename)
+					if err != nil {
+						logger.InfoLog("--------------------------downloadfile error Transaction[%s] , Image[%s] , FileName[%s] , Error[%s]\n ", imageuri, pathandfilename, err.Error())
 
-				}
+					}
+				*/
 			}
 		}
 
 	}
 
-	return rtn
+	return
 
 }

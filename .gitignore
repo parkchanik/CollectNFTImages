@@ -1,4 +1,8 @@
 CollectImagesFromETH/config.json
 CollectImagesFromETH/Images/
+CollectImagesFromETH/log/
+CollectImagesFromETH/data/
 CollectImagesFromKlaytn/config.json
 CollectImagesFromKlaytn/Images/
+CollectImagesFromKlaytn/log/
+CollectImagesFromKlaytn/data/

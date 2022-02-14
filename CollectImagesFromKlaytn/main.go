@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 
 	"context"
 	"encoding/base64"
@@ -77,7 +78,7 @@ func main() {
 	}
 	fmt.Println("ChainID : ", chainId.Int64())
 
-	file, err := os.Open("./data/rankdata_klaytn.log")
+	file, err := os.Open("./data/MONTHLY_NFT_RANKING_INFO_2021_12.csv")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -91,11 +92,10 @@ func main() {
 
 	for _, row := range rows {
 
-		trx := row[1]
-		contractAddress := row[2]
-		contractName := row[3]
-		contractSymbol := row[4]
-		tokenID := row[5]
+		contractAddress := row[0]
+		//contractName := row[1]
+		contractSymbol := row[1]
+		tokenID := row[2]
 
 		logger.InfoLog("-------------------------------------------------------contractAddressHex[%s] TokenID[%s]  ", contractAddress, tokenID)
 
@@ -121,31 +121,31 @@ func main() {
 			continue
 		}
 
-		logger.InfoLog("Transaction[%s] ContractAddress[%s] , ContractName[%s] ContractSymbol[%s] Token URI[%s] ", trx, contractAddress, contractName, contractSymbol, tokenURI)
+		logger.InfoLog("Transaction[%s] ContractAddress[%s] , ContractName[%s] ContractSymbol[%s] Token URI[%s] ", contractAddress, contractSymbol, tokenURI)
 
 		//pathandfilename := fmt.Sprintf("%s%s_%s", IMAGE_PATH, contractSymbol, tokenID)
 
-		// tokenImagesFileName := GetTokenURIData(tokenURI, pathandfilename)
-		// if err != nil {
-		// 	logger.InfoLog("Error getTokenMetaData : contractAddressHex[%s] TokenID[%s] , error[%s] ", contractAddress, tokenID, err.Error())
-		// 	continue
-		// }
+		tokenMetaData, err := getTokenMetaData(tokenURI)
+		if err != nil {
+			logger.InfoLog("Error getTokenMetaData : contractAddressHex[%s] TokenID[%s] , error[%s] ", contractAddress, tokenID, err.Error())
+			continue
+		}
 
-		// var b bytes.Buffer
+		subject := fmt.Sprintf("%v", tokenMetaData.Name)
 
-		// b.WriteString(trx)
-		// b.WriteString(",")
-		// b.WriteString(contractAddress)
-		// b.WriteString(",")
-		// b.WriteString(contractName)
-		// b.WriteString(",")
-		// b.WriteString(contractSymbol)
-		// b.WriteString(",")
-		// b.WriteString(tokenID)
+		var b bytes.Buffer
+
+		b.WriteString(contractAddress)
+		b.WriteString(",")
+		b.WriteString(contractSymbol)
+		b.WriteString(",")
+		b.WriteString(tokenID)
+		b.WriteString(",")
+		b.WriteString(subject)
 		// b.WriteString(",")
 		// b.WriteString(tokenImagesFileName)
 
-		// logger.ImageLog(b.String())
+		logger.ImageLog(b.String())
 
 	}
 
